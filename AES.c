@@ -180,6 +180,7 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
                      T1[(state[(i + 1) % Nb] >> 16) & 0xFF] ^
                      T2[(state[(i + 2) % Nb] >> 8) & 0xFF] ^
                      T3[state[(i + 3) % Nb] & 0xFF];
+                     
         }
         memcpy(state, tmp, Nb * sizeof(uint32_t));
         AddRoundKey(state,roundKeys,round);
@@ -198,6 +199,7 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
                  (S_BOX[(state[(i + 1) % Nb] >> 16) & 0xFF] << 16) |
                  (S_BOX[(state[(i + 2) % Nb] >> 8) & 0xFF] << 8) |
                  S_BOX[state[(i + 3) % Nb] & 0xFF];
+                 
     }
     memcpy(state, tmp, Nb * sizeof(uint32_t));
     AddRoundKey(state, roundKeys,10);
@@ -214,6 +216,56 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
     }
 
 }
+
+void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
+    // AddRoundKey for the final round key (Nr round)
+    AddRoundKey(state, roundKeys, Nr);
+
+    printf("Decrypted output round 10: ");
+    for (int i = 0; i < 4; ++i) {
+        printf("%02x ", state[i]);
+    }
+    printf("\n");
+
+    // Perform the decryption rounds in reverse order
+    for (int round = Nr - 1; round > 0; --round) {
+        uint32_t tmp[Nb];
+
+        // Inverse ShiftRows and Inverse SubBytes (combined using precomputed tables)
+        for (int i = 0; i < Nb; ++i) {
+            tmp[i] = Tinv0[(state[i] >> 24)&0xFF] ^
+                     Tinv1[(state[(i + 1) % Nb] >> 16) & 0xFF] ^
+                     Tinv2[(state[(i + 2) % Nb] >> 8) & 0xFF] ^
+                     Tinv3[state[(i + 3) % Nb] & 0xFF];
+        }
+        memcpy(state, tmp, Nb * sizeof(uint32_t));
+
+        // AddRoundKey for this round
+        AddRoundKey(state, roundKeys, round);
+        printf("Decrypted output round %d: ",round);
+        for (int i = 0; i < 4; ++i) {
+            printf("%02x ", state[i]);
+            
+        }
+        printf("\n");
+    }
+
+    // Final Inverse ShiftRows and Inverse SubBytes round
+    for (int i = 0; i < Nb; ++i) {
+        uint8_t *bytes = (uint8_t *)&state[i];
+        bytes[0] = INV_S_BOX[bytes[0]];
+        bytes[1] = INV_S_BOX[bytes[1]];
+        bytes[2] = INV_S_BOX[bytes[2]];
+        bytes[3] = INV_S_BOX[bytes[3]];
+    }
+
+    // Final AddRoundKey for round 0
+    AddRoundKey(state, roundKeys, 0);
+
+    // Copy the result to output
+    memcpy(output, state, Nb * sizeof(uint32_t));
+}
+
 int main() {
 
     uint32_t input [4] = {0x01234567,0x89ABCDEF,
@@ -225,8 +277,8 @@ int main() {
     // Buffer for round keys
     uint32_t roundKeys[44];
 
-    uint32_t output [4];
-
+    uint32_t EncOutput [4];
+    uint32_t DecOutput [4];
     // Perform key expansion
     KeyExpansion(key, roundKeys);
 
@@ -234,7 +286,7 @@ int main() {
     precompute_tables(T0, T1, T2, T3);
     precompute_inverse_tables(Tinv0, Tinv1, Tinv2, Tinv3);
     
-    AES_Encrypt(input, output, roundKeys);
+    AES_Encrypt(input, EncOutput, roundKeys);
 
     printf("Expanded key:\n");
         for (int i = 0; i < 44; ++i) {
@@ -245,9 +297,17 @@ int main() {
    
     printf("Encrypted output: ");
     for (int i = 0; i < 4; ++i) {
-        printf("%04x ", output[i]);
+        printf("%04x ", EncOutput[i]);
     }
     printf("\n");
+
+    AES_Decrypt(EncOutput, DecOutput, roundKeys);
+    printf("Decrypted output: ");
+    for (int i = 0; i < 4; ++i) {
+        printf("%04x ", DecOutput[i]);
+    }
+    printf("\n");
+
 
 
     return 0;
