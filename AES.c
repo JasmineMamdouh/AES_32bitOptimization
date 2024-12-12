@@ -216,28 +216,34 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
     }
 
 }
+/*
 
-
-uint32_t InverseMixColumnsKey(uint32_t keyWord) {
-    uint8_t b[4];  // Bytes of the key word
-    b[0] = (keyWord >> 24) & 0xFF;
-    b[1] = (keyWord >> 16) & 0xFF;
-    b[2] = (keyWord >> 8) & 0xFF;
-    b[3] = keyWord & 0xFF;
-
-    uint8_t result[4];
-
-    // Perform the matrix multiplication for Inverse MixColumns
-    result[0] = gf8_mul(b[0], 0x0E) ^ gf8_mul(b[1], 0x09) ^ gf8_mul(b[2], 0x0D) ^ gf8_mul(b[3], 0x0B);
-    result[1] = gf8_mul(b[0], 0x0B) ^ gf8_mul(b[1], 0x0E) ^ gf8_mul(b[2], 0x09) ^ gf8_mul(b[3], 0x0D);
-    result[2] = gf8_mul(b[0], 0x0D) ^ gf8_mul(b[1], 0x0B) ^ gf8_mul(b[2], 0x0E) ^ gf8_mul(b[3], 0x09);
-    result[3] = gf8_mul(b[0], 0x09) ^ gf8_mul(b[1], 0x0D) ^ gf8_mul(b[2], 0x0B) ^ gf8_mul(b[3], 0x0E);
-
-    // Combine the result back into a 32-bit word
-    return (result[0] << 24) | (result[1] << 16) | (result[2] << 8) | result[3];
+void InverseMixColumn(uint8_t *column, uint8_t *result) {
+    result[0] = gf8_mul(column[0], 0x0E) ^ gf8_mul(column[1], 0x0B) ^ gf8_mul(column[2], 0x0D) ^ gf8_mul(column[3], 0x09);
+    result[1] = gf8_mul(column[0], 0x09) ^ gf8_mul(column[1], 0x0E) ^ gf8_mul(column[2], 0x0B) ^ gf8_mul(column[3], 0x0D);
+    result[2] = gf8_mul(column[0], 0x0D) ^ gf8_mul(column[1], 0x09) ^ gf8_mul(column[2], 0x0E) ^ gf8_mul(column[3], 0x0B);
+    result[3] = gf8_mul(column[0], 0x0B) ^ gf8_mul(column[1], 0x0D) ^ gf8_mul(column[2], 0x09) ^ gf8_mul(column[3], 0x0E);
 }
 
+uint32_t InverseMixColumnsKey(uint32_t keyWord) {
+    uint8_t column[4];
+    uint8_t transformed[4];
+
+    // Extract the 4 bytes from the 32-bit key word
+    column[0] = (keyWord >> 24) & 0xFF;
+    column[1] = (keyWord >> 16) & 0xFF;
+    column[2] = (keyWord >> 8) & 0xFF;
+    column[3] = keyWord & 0xFF;
+
+    // Apply the Inverse MixColumns transformation to the single column
+    InverseMixColumn(column, transformed);
+
+    // Recombine the transformed column back into a 32-bit word
+    return (transformed[0] << 24) | (transformed[1] << 16) | (transformed[2] << 8) | transformed[3];
+}*/
 void PreprocessRoundKeys(const uint32_t *originalKeys, uint32_t *preprocessedKeys) {
+    uint32_t temp[4]; // Temporary array to hold preprocessed words
+
     // Copy the original keys for round 0 and round Nr (no preprocessing needed for these rounds)
     for (int i = 0; i < Nb; ++i) {
         preprocessedKeys[0 * Nb + i] = originalKeys[0 * Nb + i];
@@ -246,13 +252,45 @@ void PreprocessRoundKeys(const uint32_t *originalKeys, uint32_t *preprocessedKey
 
     // Preprocess keys for rounds 1 to Nr - 1
     for (int round = 1; round < Nr; ++round) {
+        // Pass 4 words at a time to InverseMixColumnsKey
+        InverseMixColumnsKey(&originalKeys[round * Nb], temp);
+
+        // Copy the preprocessed result back to the appropriate position in preprocessedKeys
         for (int i = 0; i < Nb; ++i) {
-            preprocessedKeys[round * Nb + i] = InverseMixColumnsKey(originalKeys[round * Nb + i]);
+            preprocessedKeys[round * Nb + i] = temp[i];
         }
     }
 }
 
 
+void InverseMixColumnsKey(uint32_t *words, uint32_t *result) {
+    uint8_t bytes[4];
+
+    for (int i = 0; i < 4; ++i) {
+        // Extract the 4 bytes from the 32-bit key word
+        bytes[0] = (words[i] >> 24) & 0xFF;
+        bytes[1] = (words[i] >> 16) & 0xFF;
+        bytes[2] = (words[i] >> 8) & 0xFF;
+        bytes[3] = words[i] & 0xFF;
+
+        // Perform the Inverse Mix Columns transformation
+        result[i] = ((uint32_t)(gf8_mul(bytes[0], 0x0e) ^ gf8_mul(bytes[1], 0x0b) ^ gf8_mul(bytes[2], 0x0d) ^ gf8_mul(bytes[3], 0x09)) << 24) |
+                    ((uint32_t)(gf8_mul(bytes[0], 0x09) ^ gf8_mul(bytes[1], 0x0e) ^ gf8_mul(bytes[2], 0x0b) ^ gf8_mul(bytes[3], 0x0d)) << 16) |
+                    ((uint32_t)(gf8_mul(bytes[0], 0x0d) ^ gf8_mul(bytes[1], 0x09) ^ gf8_mul(bytes[2], 0x0e) ^ gf8_mul(bytes[3], 0x0b)) << 8) |
+                    ((uint32_t)(gf8_mul(bytes[0], 0x0b) ^ gf8_mul(bytes[1], 0x0d) ^ gf8_mul(bytes[2], 0x09) ^ gf8_mul(bytes[3], 0x0e)));
+    }
+}
+/*
+void PreprocessRoundKeys(const uint32_t *roundKeys, uint32_t *preprocessedKeys) {
+    // Copy original round keys to preprocessed keys
+    memcpy(preprocessedKeys, roundKeys, (Nr + 1) * Nb * sizeof(uint32_t));
+
+    // Apply Inverse MixColumns on round keys in sets of 4 words, except for the last round key
+    for (int round = 1; round < Nr; ++round) {
+        InverseMixColumnsKey(&preprocessedKeys[round * Nb]);
+    }
+}
+*/
 void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKeys) {
     // AddRoundKey for the final round key (Nr round)
     AddRoundKey(state, processedKeys, Nr);
@@ -269,10 +307,15 @@ void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKey
 
         // Inverse ShiftRows and Inverse SubBytes (combined using precomputed tables)
         for (int i = 0; i < Nb; ++i) {
-            tmp[i] = Tinv0[(state[i] >> 24)&0xFF] ^
-                     Tinv1[(state[(i + 1) % Nb] >> 16) & 0xFF] ^
-                     Tinv2[(state[(i + 2) % Nb] >> 8) & 0xFF] ^
-                     Tinv3[state[(i + 3) % Nb] & 0xFF];
+           /* tmp[i] = Tinv0[(state[i] >> 24)&0xFF] ^
+                     Tinv1[(state[(i - 1) % Nb] >> 16) & 0xFF] ^
+                     Tinv2[(state[(i - 2) % Nb] >> 8) & 0xFF] ^
+                     Tinv3[state[(i - 3) % Nb] & 0xFF];
+                     */
+            tmp[i] = Tinv0[(state[i] >> 24) & 0xFF] ^
+                     Tinv1[(state[(i + Nb - 1) % Nb] >> 16) & 0xFF] ^
+                     Tinv2[(state[(i + Nb - 2) % Nb] >> 8) & 0xFF] ^
+                     Tinv3[state[(i + Nb - 3) % Nb] & 0xFF];
         }
         memcpy(state, tmp, Nb * sizeof(uint32_t));
 
@@ -287,14 +330,15 @@ void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKey
     }
 
     // Final Inverse ShiftRows and Inverse SubBytes round
+    uint32_t tmp[Nb];
     for (int i = 0; i < Nb; ++i) {
-        uint8_t *bytes = (uint8_t *)&state[i];
-        bytes[0] = INV_S_BOX[bytes[0]];
-        bytes[1] = INV_S_BOX[bytes[1]];
-        bytes[2] = INV_S_BOX[bytes[2]];
-        bytes[3] = INV_S_BOX[bytes[3]];
+         tmp[i] = (INV_S_BOX[(state[i] >> (24 - (0 * 8))) & 0xFF] << 24) |
+             (INV_S_BOX[(state[(i + Nb - 1) % Nb] >> (24 - (1 * 8))) & 0xFF] << 16) |
+             (INV_S_BOX[(state[(i + Nb - 2) % Nb] >> (24 - (2 * 8))) & 0xFF] << 8)  |
+             (INV_S_BOX[(state[(i + Nb - 3) % Nb] >> (24 - (3 * 8))) & 0xFF]);
     }
 
+    memcpy(state, tmp, Nb * sizeof(uint32_t));
     // Final AddRoundKey for round 0
     AddRoundKey(state, processedKeys, 0);
 
@@ -351,6 +395,17 @@ int main() {
     printf("\n");
 
 
+// Testing the inverse mix columns
+/*
+    uint32_t words[4] = {0x9a1635bc, 0x6916971c, 0x67c215df, 0x5b6b1e56};
+    uint32_t result[4]; // Pre-allocated array for the result
+
+    InverseMixColumnsKey(words, result);
+
+    for (int i = 0; i < 4; ++i) {
+        printf("Word %d: 0x%08x\n", i, result[i]);
+    }
+*/
 
     return 0;
 }
