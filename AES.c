@@ -1,10 +1,14 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <string.h>
+#include <stdint.h>
+#include<stdlib.h>
+#include<sys/stat.h>
 
 #define Nk 4  // Number of 32-bit words in the key (4 for AES-128)
 #define Nb 4  // Number of columns in the state
 #define Nr 10 // Number of rounds for AES-128
+#define AES_BLOCK_SIZE 16
+#define AES_KEY_SIZE 16
 
 // S-Box
 uint8_t S_BOX[256] = {
@@ -216,31 +220,7 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
     }
 
 }
-/*
 
-void InverseMixColumn(uint8_t *column, uint8_t *result) {
-    result[0] = gf8_mul(column[0], 0x0E) ^ gf8_mul(column[1], 0x0B) ^ gf8_mul(column[2], 0x0D) ^ gf8_mul(column[3], 0x09);
-    result[1] = gf8_mul(column[0], 0x09) ^ gf8_mul(column[1], 0x0E) ^ gf8_mul(column[2], 0x0B) ^ gf8_mul(column[3], 0x0D);
-    result[2] = gf8_mul(column[0], 0x0D) ^ gf8_mul(column[1], 0x09) ^ gf8_mul(column[2], 0x0E) ^ gf8_mul(column[3], 0x0B);
-    result[3] = gf8_mul(column[0], 0x0B) ^ gf8_mul(column[1], 0x0D) ^ gf8_mul(column[2], 0x09) ^ gf8_mul(column[3], 0x0E);
-}
-
-uint32_t InverseMixColumnsKey(uint32_t keyWord) {
-    uint8_t column[4];
-    uint8_t transformed[4];
-
-    // Extract the 4 bytes from the 32-bit key word
-    column[0] = (keyWord >> 24) & 0xFF;
-    column[1] = (keyWord >> 16) & 0xFF;
-    column[2] = (keyWord >> 8) & 0xFF;
-    column[3] = keyWord & 0xFF;
-
-    // Apply the Inverse MixColumns transformation to the single column
-    InverseMixColumn(column, transformed);
-
-    // Recombine the transformed column back into a 32-bit word
-    return (transformed[0] << 24) | (transformed[1] << 16) | (transformed[2] << 8) | transformed[3];
-}*/
 void PreprocessRoundKeys(const uint32_t *originalKeys, uint32_t *preprocessedKeys) {
     uint32_t temp[4]; // Temporary array to hold preprocessed words
 
@@ -253,7 +233,7 @@ void PreprocessRoundKeys(const uint32_t *originalKeys, uint32_t *preprocessedKey
     // Preprocess keys for rounds 1 to Nr - 1
     for (int round = 1; round < Nr; ++round) {
         // Pass 4 words at a time to InverseMixColumnsKey
-        InverseMixColumnsKey(&originalKeys[round * Nb], temp);
+        InverseMixColumnsKey(originalKeys[round * Nb], temp);
 
         // Copy the preprocessed result back to the appropriate position in preprocessedKeys
         for (int i = 0; i < Nb; ++i) {
@@ -280,17 +260,7 @@ void InverseMixColumnsKey(uint32_t *words, uint32_t *result) {
                     ((uint32_t)(gf8_mul(bytes[0], 0x0b) ^ gf8_mul(bytes[1], 0x0d) ^ gf8_mul(bytes[2], 0x09) ^ gf8_mul(bytes[3], 0x0e)));
     }
 }
-/*
-void PreprocessRoundKeys(const uint32_t *roundKeys, uint32_t *preprocessedKeys) {
-    // Copy original round keys to preprocessed keys
-    memcpy(preprocessedKeys, roundKeys, (Nr + 1) * Nb * sizeof(uint32_t));
 
-    // Apply Inverse MixColumns on round keys in sets of 4 words, except for the last round key
-    for (int round = 1; round < Nr; ++round) {
-        InverseMixColumnsKey(&preprocessedKeys[round * Nb]);
-    }
-}
-*/
 void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKeys) {
     // AddRoundKey for the final round key (Nr round)
     AddRoundKey(state, processedKeys, Nr);
@@ -307,11 +277,6 @@ void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKey
 
         // Inverse ShiftRows and Inverse SubBytes (combined using precomputed tables)
         for (int i = 0; i < Nb; ++i) {
-           /* tmp[i] = Tinv0[(state[i] >> 24)&0xFF] ^
-                     Tinv1[(state[(i - 1) % Nb] >> 16) & 0xFF] ^
-                     Tinv2[(state[(i - 2) % Nb] >> 8) & 0xFF] ^
-                     Tinv3[state[(i - 3) % Nb] & 0xFF];
-                     */
             tmp[i] = Tinv0[(state[i] >> 24) & 0xFF] ^
                      Tinv1[(state[(i + Nb - 1) % Nb] >> 16) & 0xFF] ^
                      Tinv2[(state[(i + Nb - 2) % Nb] >> 8) & 0xFF] ^
@@ -351,6 +316,144 @@ void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKey
     printf("\n");
 }
 
+
+unsigned char* load_file(const char *fn, int *len)
+{
+	struct stat info={0};
+	int ret=stat(fn, &info);
+	if(ret)//inaccessible
+		return 0;
+	FILE *fsrc=fopen(fn, "rb");
+	if(!fsrc)//inaccessible
+		return 0;
+	unsigned char * data=(unsigned char *)malloc(info.st_size);//remember to free(data) at the end
+	if(!data)//out of memory
+	{
+		exit(1);
+		return 0;
+	}
+	size_t nread=fread(data, 1, info.st_size, fsrc);
+	fclose(fsrc);
+	*len=(int)nread;
+	return data;
+}
+
+//Use this code to write files:
+int save_file(const char *fn, unsigned char *data, int len)
+{
+	FILE *fdst=fopen(fn, "wb");
+	if(!fdst)
+		return 0;
+	fwrite(data, 1, len, fdst);
+	fclose(fdst);
+	return 1;
+}
+
+int main(int argc, char *argv[]) 
+{
+
+    //Precompute the lookup tables
+    precompute_tables(T0, T1, T2, T3);
+    precompute_inverse_tables(Tinv0, Tinv1, Tinv2, Tinv3);
+    if (argc != 5) {
+        fprintf(stderr, "Usage: %s <keyfile> <inputfile> <outputfile>\n", argv[0]);
+        return 1;
+    }
+
+    // Load the key from a file
+    int key_len;
+    unsigned char *key_data = load_file(argv[2], &key_len);
+    if (!key_data || key_len != AES_KEY_SIZE) {
+        fprintf(stderr, "Failed to load the key or key size is incorrect(must be 16 bytes)\n");
+        return 1;
+    }
+
+    // Load the data from a file
+    int data_len;
+    unsigned char *data = load_file(argv[3], &data_len);
+    if (!data) {
+        fprintf(stderr, "Failed to load the data\n");
+        free(key_data);
+        return 1;
+    }
+
+    // Ensure data length is a multiple of 16 (128 bits)
+    if (data_len % AES_BLOCK_SIZE != 0) {
+        fprintf(stderr, "Data length must be a multiple of 16 bytes\n");
+        free(data);
+        free(key_data);
+        return 1;
+    }
+
+    // Prepare to save encrypted data
+    unsigned char *encrypted_data = (unsigned char *)malloc(data_len);
+    if (!encrypted_data) {
+        fprintf(stderr, "Memory allocation for encrypted data failed\n");
+        free(data);
+        free(key_data);
+        return 1;
+    }
+
+    // Convert the key to a uint32_t array of 4 elements
+    uint32_t key[4];
+    for (int i = 0; i < 4; ++i) {
+        key[i] = ((uint32_t)key_data[i * 4] << 24) |
+                 ((uint32_t)key_data[i * 4 + 1] << 16) |
+                 ((uint32_t)key_data[i * 4 + 2] << 8) |
+                ((uint32_t)key_data[i * 4 + 3]);
+    }
+    free(key_data); // Free the raw key data after conversion
+    
+    // Key expansion
+    uint32_t roundKeys[44];
+    uint32_t processedKeys[44];
+
+    KeyExpansion(key, roundKeys);
+    PreprocessRoundKeys(roundKeys, processedKeys);
+
+    // Encrypt each 128-bit block
+    for (int i = 0; i < data_len; i += AES_BLOCK_SIZE) {
+        uint32_t state[4];      // AES state (128 bits = 4 x 32-bit words)
+        uint32_t output[4];     // Output buffer for encryption/decryption
+
+        // Load 16 bytes into state as 4 x 32-bit words
+        for (int j = 0; j < 4; ++j) {
+            state[j] = ((uint32_t)data[i + j * 4]) << 24 |
+                       ((uint32_t)data[i + j * 4 + 1]) << 16 |
+                       ((uint32_t)data[i + j * 4 + 2]) << 8 |
+                       ((uint32_t)data[i + j * 4 + 3]);
+        }
+
+        // Perform encryption or decryption
+        if(argv[1][0]=='e'){
+            AES_Encrypt(state, output, roundKeys);
+        }else{
+            AES_Decrypt(state, output, processedKeys);
+        }
+
+        // Store the output back into the output buffer
+        for (int j = 0; j < 4; ++j) {
+            encrypted_data[i + j * 4] = (output[j] >> 24) & 0xFF;
+            encrypted_data[i + j * 4 + 1] = (output[j] >> 16) & 0xFF;
+            encrypted_data[i + j * 4 + 2] = (output[j] >> 8) & 0xFF;
+            encrypted_data[i + j * 4 + 3] = output[j] & 0xFF;
+        }
+    }
+
+    // Save the encrypted data to a file
+    if (!save_file(argv[4], encrypted_data, data_len)) {
+        fprintf(stderr, "Failed to save the encrypted data\n");
+        free(data);
+        free(encrypted_data);
+        return 1;
+    }
+
+    // Cleanup
+    free(data);
+    free(encrypted_data);
+    return 0;
+}
+/*
 int main() {
 
     uint32_t input [4] = {0x01234567,0x89ABCDEF,
@@ -396,7 +499,7 @@ int main() {
 
 
 // Testing the inverse mix columns
-/*
+
     uint32_t words[4] = {0x9a1635bc, 0x6916971c, 0x67c215df, 0x5b6b1e56};
     uint32_t result[4]; // Pre-allocated array for the result
 
@@ -405,8 +508,9 @@ int main() {
     for (int i = 0; i < 4; ++i) {
         printf("Word %d: 0x%08x\n", i, result[i]);
     }
-*/
+
 
     return 0;
 }
 
+*/
