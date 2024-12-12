@@ -146,23 +146,23 @@ void KeyExpansion(const uint32_t *key, uint32_t *ekey) {
 
 void AddRoundKey(uint32_t *state, const uint32_t *roundKey, uint8_t round) {
     
-    printf("Round %d", round);
-        printf("\n");    
+//    printf("Round %d", round);
+//        printf("\n");    
        
     // The round key is a 4-word block, so each round uses 4 consecutive uint32_t words
     uint32_t *key = (uint32_t *)roundKey + round * 4;
 
     // XOR each element of the state with the corresponding round key
     for (int i = 0; i < 4; ++i) {
-        printf("Previous block :%08x ", state[i]);
-        printf("\n");
-        printf("round key  :%08x ", key[i]);
-        printf("\n");
+//        printf("Previous block :%08x ", state[i]);
+//        printf("\n");
+//        printf("round key  :%08x ", key[i]);
+//        printf("\n");
 
         state[i] ^= key[i];  // XOR the state element with the corresponding round key element
 
-         printf("result block :%08x ", state[i]);
-        printf("\n");
+//         printf("result block :%08x ", state[i]);
+//        printf("\n");
     }
 }
 
@@ -171,11 +171,11 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
 
     // Initial AddRoundKey
     AddRoundKey(state, roundKeys,0);
-    printf("Encrypted output round 0: ");
-    for (int i = 0; i < 4; ++i) {
-        printf("%02x ", state[i]);
-    }
-    printf("\n");
+    // printf("Encrypted output round 0: ");
+    // for (int i = 0; i < 4; ++i) {
+    //     printf("%02x ", state[i]);
+    // }
+    // printf("\n");
     // Main rounds
     for (int round = 1; round < Nr; ++round) {
         uint32_t tmp[Nb];
@@ -188,12 +188,12 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
         }
         memcpy(state, tmp, Nb * sizeof(uint32_t));
         AddRoundKey(state,roundKeys,round);
-        printf("Encrypted output round %d: ",round);
-        for (int i = 0; i < 4; ++i) {
-            printf("%02x ", state[i]);
+        // printf("Encrypted output round %d: ",round);
+        // for (int i = 0; i < 4; ++i) {
+        //     printf("%02x ", state[i]);
             
-        }
-        printf("\n");
+        // }
+        // printf("\n");
     }
 
     // Final round (without MixColumns)
@@ -208,11 +208,11 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
     memcpy(state, tmp, Nb * sizeof(uint32_t));
     AddRoundKey(state, roundKeys,10);
 
-    printf("Encrypted output round 10: ");
-    for (int i = 0; i < 4; ++i) {
-        printf("%02x ", state[i]);
-    }
-    printf("\n");
+    // printf("Encrypted output round 10: ");
+    // for (int i = 0; i < 4; ++i) {
+    //     printf("%02x ", state[i]);
+    // }
+    // printf("\n");
 
     // Store state into output
  for (int i = 0; i < 4; ++i) {
@@ -221,29 +221,7 @@ void AES_Encrypt(uint32_t *state, uint32_t *output, const uint32_t *roundKeys) {
 
 }
 
-void PreprocessRoundKeys(const uint32_t *originalKeys, uint32_t *preprocessedKeys) {
-    uint32_t temp[4]; // Temporary array to hold preprocessed words
-
-    // Copy the original keys for round 0 and round Nr (no preprocessing needed for these rounds)
-    for (int i = 0; i < Nb; ++i) {
-        preprocessedKeys[0 * Nb + i] = originalKeys[0 * Nb + i];
-        preprocessedKeys[Nr * Nb + i] = originalKeys[Nr * Nb + i];
-    }
-
-    // Preprocess keys for rounds 1 to Nr - 1
-    for (int round = 1; round < Nr; ++round) {
-        // Pass 4 words at a time to InverseMixColumnsKey
-        InverseMixColumnsKey(originalKeys[round * Nb], temp);
-
-        // Copy the preprocessed result back to the appropriate position in preprocessedKeys
-        for (int i = 0; i < Nb; ++i) {
-            preprocessedKeys[round * Nb + i] = temp[i];
-        }
-    }
-}
-
-
-void InverseMixColumnsKey(uint32_t *words, uint32_t *result) {
+void InverseMixColumnsKey(const uint32_t *words, uint32_t *result) {
     uint8_t bytes[4];
 
     for (int i = 0; i < 4; ++i) {
@@ -261,15 +239,38 @@ void InverseMixColumnsKey(uint32_t *words, uint32_t *result) {
     }
 }
 
+void PreprocessRoundKeys(const uint32_t *originalKeys, uint32_t *preprocessedKeys) {
+    uint32_t temp[4]; // Temporary array to hold preprocessed words
+
+    // Copy the original keys for round 0 and round Nr (no preprocessing needed for these rounds)
+    for (int i = 0; i < Nb; ++i) {
+        preprocessedKeys[0 * Nb + i] = originalKeys[0 * Nb + i];
+        preprocessedKeys[Nr * Nb + i] = originalKeys[Nr * Nb + i];
+    }
+
+    // Preprocess keys for rounds 1 to Nr - 1
+    for (int round = 1; round < Nr; ++round) {
+        // Pass 4 words at a time to InverseMixColumnsKey
+        InverseMixColumnsKey(&originalKeys[round * Nb], temp);
+
+        // Copy the preprocessed result back to the appropriate position in preprocessedKeys
+        for (int i = 0; i < Nb; ++i) {
+            preprocessedKeys[round * Nb + i] = temp[i];
+        }
+    }
+}
+
+
+
 void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKeys) {
     // AddRoundKey for the final round key (Nr round)
     AddRoundKey(state, processedKeys, Nr);
 
-    printf("Decrypted output round 10: ");
-    for (int i = 0; i < 4; ++i) {
-        printf("%02x ", state[i]);
-    }
-    printf("\n");
+    // printf("Decrypted output round 10: ");
+    // for (int i = 0; i < 4; ++i) {
+    //     printf("%02x ", state[i]);
+    // }
+    // printf("\n");
 
     // Perform the decryption rounds in reverse order
     for (int round = Nr - 1; round > 0; --round) {
@@ -286,12 +287,12 @@ void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKey
 
         // AddRoundKey for this round
         AddRoundKey(state, processedKeys, round);
-        printf("Decrypted output round %d: ",round);
-        for (int i = 0; i < 4; ++i) {
-            printf("%02x ", state[i]);
+        // printf("Decrypted output round %d: ",round);
+        // for (int i = 0; i < 4; ++i) {
+        //     printf("%02x ", state[i]);
             
-        }
-        printf("\n");
+        // }
+        // printf("\n");
     }
 
     // Final Inverse ShiftRows and Inverse SubBytes round
@@ -309,11 +310,11 @@ void AES_Decrypt(uint32_t *state, uint32_t *output, const uint32_t *processedKey
 
     // Copy the result to output
     memcpy(output, state, Nb * sizeof(uint32_t));
-    printf("Final decrypted output:\n");
-    for (int i = 0; i < 4; ++i) {
-        printf("%08x ", state[i]);
-    }
-    printf("\n");
+    // printf("Final decrypted output:\n");
+    // for (int i = 0; i < 4; ++i) {
+    //     printf("%08x ", state[i]);
+    // }
+    // printf("\n");
 }
 
 
@@ -453,7 +454,9 @@ int main(int argc, char *argv[])
     free(encrypted_data);
     return 0;
 }
+
 /*
+
 int main() {
 
     uint32_t input [4] = {0x01234567,0x89ABCDEF,
